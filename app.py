@@ -42,4 +42,8 @@ def modify_and_serve(calendar_url):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Récupère le port assigné par Render (ou 5000 par défaut pour le développement local)
+    port = int(os.getenv("PORT", 5000))
+    # Écoute sur 0.0.0.0 pour être accessible
+    app.run(host="0.0.0.0", port=port, debug=True)
+
