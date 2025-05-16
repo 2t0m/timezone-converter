@@ -1,40 +1,43 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, send_file, jsonify
 import os
 import requests
+from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-@app.route("/convert", methods=["POST"])
-def convert_timezone():
-    url = request.json.get("url")
-
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    if not url.endswith(".ics"):
-        return jsonify({"error": "Invalid URL format"}), 400
-
+@app.route("/ancien_cal=<path:calendar_url>", methods=["GET"])
+def modify_and_serve(calendar_url):
+    """
+    Télécharge, modifie et renvoie le fichier .ics avec le fuseau horaire Europe/Paris.
+    """
     try:
+        # Décoder l'URL
+        calendar_url = calendar_url.strip()
+
         # Télécharger le fichier .ics
-        response = requests.get(url)
+        response = requests.get(calendar_url)
         if response.status_code != 200:
-            return jsonify({"error": "Failed to download .ics file"}), 500
+            return jsonify({"error": "Unable to download .ics file"}), 500
 
         content = response.text
 
         # Modifier le fuseau horaire
         content = content.replace("TZID=GMT", "TZID=Europe/Paris")
 
-        # Sauvegarder le fichier modifié
-        output_path = os.path.join(UPLOAD_FOLDER, "modified_calendar.ics")
+        # Générer un nom de fichier basé sur le hash de l'URL
+        filename = "modified_cal.ics"
+        output_path = os.path.join(UPLOAD_FOLDER, filename)
+
+        # Enregistrer le fichier modifié
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-        return send_file(output_path, as_attachment=True)
-    
+        # Envoyer le fichier
+        return send_file(output_path, as_attachment=True, download_name="cal.ics")
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
