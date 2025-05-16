@@ -1,7 +1,6 @@
 from flask import Flask, request, send_file, jsonify
 import os
 import requests
-from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
 
@@ -14,9 +13,6 @@ def modify_and_serve(calendar_url):
     Télécharge, modifie et renvoie le fichier .ics avec le fuseau horaire Europe/Paris.
     """
     try:
-        # Décoder l'URL
-        calendar_url = calendar_url.strip()
-
         # Télécharger le fichier .ics
         response = requests.get(calendar_url)
         if response.status_code != 200:
@@ -24,14 +20,43 @@ def modify_and_serve(calendar_url):
 
         content = response.text
 
-        # Modifier le fuseau horaire
-        content = content.replace("TZID=GMT", "TZID=Europe/Paris")
+        # Remplacement des TZID par Europe/Paris
+        # Ces TZID couvrent les principaux identifiants dans le fichier
+        tzid_replacements = {
+            "TZID=W. Europe Standard Time": "TZID=Europe/Paris",
+            "TZID=Greenwich Standard Time": "TZID=Europe/Paris",
+            "TZID=Romance Standard Time": "TZID=Europe/Paris"
+        }
 
-        # Générer un nom de fichier basé sur le hash de l'URL
-        filename = "modified_cal.ics"
-        output_path = os.path.join(UPLOAD_FOLDER, filename)
+        for old_tz, new_tz in tzid_replacements.items():
+            content = content.replace(old_tz, new_tz)
 
-        # Enregistrer le fichier modifié
+        # Remplacer le bloc VTIMEZONE par une définition unique pour Europe/Paris
+        vtimezone_block = """BEGIN:VTIMEZONE
+TZID=Europe/Paris
+BEGIN:STANDARD
+DTSTART:16010101T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3
+END:DAYLIGHT
+END:VTIMEZONE"""
+
+        # Supprimer tous les blocs VTIMEZONE existants et insérer le nouveau
+        content = "\n".join([
+            line for line in content.splitlines() if not line.startswith("BEGIN:VTIMEZONE")
+        ])
+        content = content.replace("END:VTIMEZONE", "")
+        content = content.replace("BEGIN:VEVENT", vtimezone_block + "\nBEGIN:VEVENT")
+
+        # Sauvegarder le fichier modifié
+        output_path = os.path.join(UPLOAD_FOLDER, "modified_cal.ics")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
 
@@ -42,8 +67,5 @@ def modify_and_serve(calendar_url):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # Récupère le port assigné par Render (ou 5000 par défaut pour le développement local)
     port = int(os.getenv("PORT", 5000))
-    # Écoute sur 0.0.0.0 pour être accessible
-    app.run(host="0.0.0.0", port=port, debug=True)
-
+    app.run(host="0.0.0.0", port=port)
